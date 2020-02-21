@@ -1,4 +1,5 @@
-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 def polarity_check(uw_obj, op_material=4, plate_thickness=100., horizontal_plane='xz', trench_direction='z'):
     '''
