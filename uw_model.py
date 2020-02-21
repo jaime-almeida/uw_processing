@@ -103,6 +103,9 @@ class uw_model:
         # Save the model name
         self.model_name = get_model_name(model_dir)
         
+        # Save an empty list/dict for any slicing that will be done
+        self.performed_slices = []
+        
         
     def set_current_ts(self, step):
         # Set the timestep for further processes
@@ -371,7 +374,13 @@ class uw_model:
 
         
         
-    def set_slice(self, direction, value=0, nslices=None, find_closest=False):
+    def set_slice(self, direction, value=0, nslices=None, find_closest=False, save=False):
+        
+        ''' 
+        
+        TODO
+        
+        '''
         # This makes unlimited slices of the model. Use with care
         if np.all(direction != 'x' and direction != 'y' and direction != 'z'):
             raise Exception('The slice direction must be: ''x'', ''y'' or ''z''!')
@@ -381,6 +390,15 @@ class uw_model:
             self.output['mesh']
         except:
             raise Exception('No mesh read yet!')
+        
+        # ======================= SAVE THE SLICES INTO A DICTIONARY OR OBJECT =======================
+        
+        # This would be useful to redo any slicing destroyed by a function or other
+        self.performed_slices.append({'direction': direction,
+                                      'value': value,
+                                      'nslices': nslices, 
+                                      'find_closest':find_closest},
+                                      )
         
         if not nslices:
             
@@ -446,8 +464,102 @@ class uw_model:
             temp_IDs = np.ones(np.array(temp_bool)[0].shape)*1e3
                
             for n_slice, index in zip(range(nslices), temp_bool):
-               temp_IDs[index] = int(n_slice)
+                temp_IDs[index] = int(n_slice)
            
             # Save the ID
             for key in self.output:
                 self.output[key]['slice_id'] = temp_IDs
+                
+    #################################################
+    #             SUBDUCTION FUNCTIONS              #
+    #################################################
+    
+    # # Best way to define polarity reversal is to detect the OP in the mantle, below what is expected to be the base of the plate
+
+    def polarity_check(self, op_material=4, plate_thickness=100., horizontal_plane='xz', trench_direction='z'):
+        '''
+         Function for finding the overriding plate at a critical depth. This depth is 2x deeper than the expected thickness.
+
+         Parameters:
+            >>> uw_object: an object created with the uw_model script, loaded with timestep, mesh and material.
+            >>> op_material: the ID or range of IDS for the overriding plate crust. 
+            >>> plate_thickness: self-explanatory, maximum expected thickness for the lithosphere in km
+            >>> horizontal_plane: indicate the horizontal plane directions, by default 'xy'.
+                                  Options: 'xy', 'yz', 'xz'
+            >>> trench_direction: indicate the along trench direction, by default 'z'.
+                                  Options: 'x', 'y', 'z'                      
+
+         Returns: 
+            New column in all output dataframes, 'reversal'. In this column, 0 represents normal polarity, 1 represents reversed polarity.
+            
+        Example use:
+            model = uw_model('path/to/model')
+            model.set_current_ts(time)
+            model.get_mesh()
+            model.get_material()
+            model.polarity_check()
+        
+        '''
+        # Catch a few errors:
+        if type(horizontal_plane) != str:
+            raise TypeError('Plane must be a string!')
+
+        if len(horizontal_plane) != 2:
+            raise ValueError('Plane can only contain two letters!')
+
+        if len(trench_direction) != 1:
+            raise ValueError('Trench direction is a single letter!')
+
+        # ====================================== CHECK VALIDITY ======================================
+
+        # Ensure the strings are correctly formatted.
+        horizontal_plane = "".join(sorted(horizontal_plane.lower())) # Correctly sorted and in lower case.
+        trench_direction = trench_direction.lower()
+
+        # Check if the plane is valid:
+        valid_planes = ['xy', 'yz', 'xz']
+        check = np.sum([sorted(horizontal_plane) == sorted(valid) for valid in valid_planes])
+
+        if check == 0:
+            raise ValueError('Plane is invalid. Please try a combination of ''x'', ''y'' and ''z''.')
+
+        # Check the plane direction:
+        slice_direction = 'xyz'
+
+        for char in horizontal_plane:
+            slice_direction = slice_direction.replace(char, '')
+
+        # Check if the direction of the trench is valid:
+        valid_direction = ['x', 'y', 'z']
+        check = np.sum([trench_direction == valid for valid in valid_direction])
+
+        if check == 0:
+            raise ValueError('Trench is invalid. Please try ''x'', ''y'' or ''z''.')
+
+        # ================================ DETECT THE POLARITY ========================================
+        
+        # Remove any slices:
+        self.remove_slices()
+        
+        # Set the critical depth:
+        critical_depth = 2*plate_thickness*1e3
+
+        # Create a slice at that depth:
+        self.set_slice(slice_direction, value=self.output['mesh'].y.max() - critical_depth, find_closest = True)
+
+        # Create a database just for the next operations, saves on memory and code:
+        reversed_index = self.output['material'][self.output['material'].mat == op_material].index.to_numpy()
+
+        # Add those index to every output frame as another column:
+        for key in self.output:
+            
+            # Create a zeros array, each zero will represent the normal polarity
+            self.output[key]['reversal'] = np.zeros(self.output['mesh'].x.shape)
+            self.output[key].reversal.iloc[reversed_index] = 1
+        
+        # Remove any slices:
+        self.remove_slices()
+        
+        # Remake the ones deleted:
+        for slices in self.performed_slices:
+            self.set_slice(**slices)
