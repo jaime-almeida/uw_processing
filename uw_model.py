@@ -356,25 +356,45 @@ class uw_model:
 
     def remove_slices(self):
         '''
-        Remove the slices made previously and remake the outputs. This currently deletes any other function output, such as polarity_check()
+        Remove the slices made previously and remake the outputs. 
         
-        TODO: add a way to prevent this from happening.
+        PROBLEM: Slices limit the ID and recreating adds either zeros or NaNs. This can be problematic.
+        TODO: Think about it ?
         '''
+        
         # for some reason self isn't working
         model = self
         
+        # =============================== ATTRIBUTES SEARCHED ==========================
         # get previously used keys:
         key_id = []
         
         for key in self.output.keys():
             key_id.append(key)
-            
+        
+        
+        
+        # ================================= EXTRA FUNCTIONS ==========================
+        # Check for any functions that were ran before:
+#         # Best way to do is to check the mesh grid for any extra columns
+#         if self.dim == 3:
+#             base_columns = ['x', 'y', 'z']
+#         else:
+#             base_columns = ['x', 'y']
+        
+#         # Loop over all columns and check if they're not in the base set for mesh:
+#         extra_columns = [column for column in self.output['mesh'] if column not in base_columns]
+        
+#         # Copy the information that was previously calculated:
+#         extra_df = self.output['mesh'][extra].copy()
+        
+        
+        # ========================== RECREATE THE DATABASE WITHOUT SLICES ===============
         # Reset the timestep
         self.set_current_ts(int(self.current_step))
 
         # Recreate the model
         for key in key_id:
-#             print('model.get_' + key + '()')
             eval('model.get_' + key + '()')
 
         
@@ -483,7 +503,7 @@ class uw_model:
 
     def polarity_check(self, op_material=4, plate_thickness=100., horizontal_plane='xz', trench_direction='z'):
         '''
-         Function for finding the overriding plate at a critical depth. This depth is 2x deeper than the expected thickness.
+         Function for finding the overriding plate at a critical depth. This depth is 1.5x deeper than the expected thickness.
 
          Parameters:
             >>> uw_object: an object created with the uw_model script, loaded with timestep, mesh and material.
@@ -495,9 +515,12 @@ class uw_model:
                                   Options: 'x', 'y', 'z'                      
 
          Returns: 
-            New column in all output dataframes, 'reversal'. In this column, 0 represents normal polarity, 1 represents reversed polarity.
+            New dataframe under model.polarity. 
+            model.polarity with two columns: along trench axis positions and polarity state.
+            Zero (0) represents normal (i.e. initial polarity) while one (1) represents a reversed state.
             
-        Example use:
+            
+         Example use:
             model = uw_model('path/to/model')
             model.set_current_ts(time)
             model.get_mesh()
@@ -547,7 +570,7 @@ class uw_model:
         self.remove_slices()
         
         # Set the critical depth:
-        critical_depth = 2*plate_thickness*1e3
+        critical_depth = 1.5*plate_thickness*1e3
         
         # Create a slice at that depth:
         self.set_slice(slice_direction, value=self.output['mesh'].y.max() - critical_depth, find_closest = True)
@@ -555,18 +578,30 @@ class uw_model:
         # Create a database just for the next operations, saves on memory and code:
         reversed_index = self.output['material'][self.output['material'].mat == op_material].index.to_numpy()
 
-        # Add those index to every output frame as another column:
-        for key in self.output:
+#         # Add those index to every output frame as another column:
+#         for key in self.output:
             
-            # Create a zeros array, each zero will represent the normal polarity
-            self.output[key]['reversal'] = np.zeros(self.output['mesh'].x.shape)
-            self.output[key].reversal.iloc[reversed_index] = 1
+        # Create a zeros array, each zero will represent the normal polarity
+        self.polarity = pd.DataFrame(data=np.array([self.output['mesh'][trench_direction].to_numpy(),
+                                           np.zeros(self.output['mesh'].x.shape)]).T
+                                           , columns=(trench_direction,
+                                                     'state'))
+        self.polarity.loc[reversed_index, 'state'] = 1
+        
         
         # Remove any slices:
         self.remove_slices()
         
+#         # Add polarity to all dataframes now:
+#         for key in self.output:
+#             self.output[key]['polarity'] = polarity.state
+        
         needed_slices = self.performed_slices.copy()
+        
         # Remake the ones deleted:
         for slices in needed_slices:
             print(f'Making slice: {slices}')
             self.set_slice(**slices)
+            
+        # Broadcast the polarity into the output?
+        
