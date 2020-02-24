@@ -355,6 +355,11 @@ class uw_model:
                                                     reset_index(drop=True)
 
     def remove_slices(self):
+        '''
+        Remove the slices made previously and remake the outputs. This currently deletes any other function output, such as polarity_check()
+        
+        TODO: add a way to prevent this from happening.
+        '''
         # for some reason self isn't working
         model = self
         
@@ -392,13 +397,13 @@ class uw_model:
             raise Exception('No mesh read yet!')
         
         # ======================= SAVE THE SLICES INTO A DICTIONARY OR OBJECT =======================
-        
-        # This would be useful to redo any slicing destroyed by a function or other
-        self.performed_slices.append({'direction': direction,
-                                      'value': value,
-                                      'nslices': nslices, 
-                                      'find_closest':find_closest},
-                                      )
+        if save:
+            # This would be useful to redo any slicing destroyed by a function or other
+            self.performed_slices.append({'direction': direction,
+                                          'value': value,
+                                          'nslices': nslices, 
+                                          'find_closest':find_closest},
+                                          )
         
         if not nslices:
             
@@ -543,7 +548,7 @@ class uw_model:
         
         # Set the critical depth:
         critical_depth = 2*plate_thickness*1e3
-
+        
         # Create a slice at that depth:
         self.set_slice(slice_direction, value=self.output['mesh'].y.max() - critical_depth, find_closest = True)
 
@@ -560,6 +565,8 @@ class uw_model:
         # Remove any slices:
         self.remove_slices()
         
+        needed_slices = self.performed_slices.copy()
         # Remake the ones deleted:
-        for slices in self.performed_slices:
+        for slices in needed_slices:
+            print(f'Making slice: {slices}')
             self.set_slice(**slices)
