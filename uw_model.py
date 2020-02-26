@@ -18,28 +18,70 @@ import re as re
 cmy = 365*24*60*60.*100
 
 def get_model_name(model_dir):
+    '''
+    Function to get the model name based on the path supplied to the uw_model object.
+    Automatically ran when initiating the uw_model object.
+    
+    Arguments:
+        >>> model_dir: complete path to the model
+        
+    Returns:
+        >>> Model name in a string variable.
+        
+    '''
     if model_dir[-1] == '/':
         model_dir -= '/'
         
     return re.split('/', model_dir)[-1]
 
-def parallelize_dataframe(df, func, n_cores=4):
-    df_split = np.array_split(df, n_cores)
-    pool = Pool(n_cores)
-    df = pd.concat(pool.map(func, df_split))
-    pool.close()
-    pool.join()
-    return df
+# def parallelize_dataframe(df, func, n_cores=4):
+#     df_split = np.array_split(df, n_cores)
+#     pool = Pool(n_cores)
+#     df = pd.concat(pool.map(func, df_split))
+#     pool.close()
+#     pool.join()
+#     return df
 
-def velocity_rescale(df, scf):    
+def velocity_rescale(df, scf=1e22):  
+    '''
+    Function that rescales the velocity dataframe object (in m/s) based on the supplied scaling factor (scf) into the 
+    correct "geological" SI, cm/yr.
+    Automatically ran when obtaining the velocity data for the uw_model object.
+    
+    Arguments:
+        >>> df: velocity dataframe
+        >>> scf: scaling factor, by default, 1e22
+    Returns:
+        >>> Rescaled velocity in cm/yr.
+    '''
     df = df/scf*cmy
     return df
 
 def viscosity_rescale(df, scf):
+    '''
+    Function that rescales the viscosity dataframe object based on the supplied scaling factor (scf) into the 
+    correct "geological" SI, Pa.s.
+    Automatically ran when obtaining the viscosity data for the uw_model object.
+    
+    Arguments:
+        >>> df: viscosity dataframe
+        >>> scf: scaling factor, by default, 1e22
+    Returns:
+        >>> Rescaled viscosity in Pa.s
+    '''
     df = np.log10(df*scf)
     return df
 
 def dim_eval(res):
+    '''
+    Function to return an int that describes the model dimensionality
+    Automatically ran when initiating the uw_model object.
+    
+    Arguments:
+        >>> res: model resolution array
+    Returns:
+        >>> Number of model dimensions as uint8.
+    '''
     # Not likely to be a 1D model.
     if len(res) > 2:
         return 3
@@ -47,6 +89,16 @@ def dim_eval(res):
         return 2
 
 def get_res(model_dir):
+    '''
+    Function to evalute the model dimensionality
+    Automatically ran when initiating the uw_model object.
+    
+    Arguments:
+        >>> model_dir: complete path to the model directory
+    Returns:
+        >>> Resolution dictionary with keys corresponding to the directions. 
+        >>> ndims: number of dimensions found in the mesh files. 
+    '''
     # Make  the file path
     filename = model_dir + 'Mesh.linearMesh.00000.h5'
     
@@ -60,6 +112,20 @@ def get_res(model_dir):
     return {'x': res[0]+1, 'y': res[1]+1, 'z': res[2]+1}, ndims
 
 def ts_writer(ts_in):
+    '''
+    Function to create a timestep string variable that complies with the UW output format.
+    Automatically ran when using the set_current_timestep() function.
+    
+    Arguments:
+        >>> ts_in: timestep number in any format (uint, float, string, etc.)
+    Returns:
+        >>> Underworld compliable timestep string variable.
+    Example:
+        >>> ts = 90
+        >>> ts_writer(90)
+                00090
+
+    '''
     # Making the timestep text:
     if ts_in <= 9:
         ts_usable = '0000' + str(ts_in)
@@ -74,6 +140,17 @@ def ts_writer(ts_in):
     return ts_usable
 
 def get_time(mdir, ts):
+    '''
+    Function that obtains the current time information from the model output. 
+    Automatically ran when using the set_current_timestep() function.
+    
+    Arguments:
+        >>> mdir: complete path to the model directory.
+        >>> ts: timestep number in Underworld compliable format.
+    Returns:
+        >>> Current unscaled time in the model for the timestep in SI format (seconds).
+    '''    
+    
     data = h5.File(mdir + 'timeInfo.' + ts + '.h5')
     time_out = data['currentTime'][0]
     
@@ -81,7 +158,24 @@ def get_time(mdir, ts):
     
 # %% 
 class uw_model:
-    
+    '''
+        UW_MODEL
+        
+        This object contains *most* functions required to process any Underworld 1 models, from basic test models to complex subduction models. 
+        
+        When the object is initiated, a set of parameters is immediately detected and stored inside the object:
+        
+            1) model.model_dir: path to the model, as supplied in the initial definition.
+            
+            2) model.res: model resolution dictionary with keys for (x, y, z) directions.
+            
+            3) model.dim: number of dimensions of the model.
+            
+            4) model.output:
+                    >
+
+
+    '''
     def __init__(self, model_dir):
         if model_dir[-1] != '/':
             self.model_dir = model_dir + '/'
